@@ -1,0 +1,78 @@
+﻿@page "/database"
+@inject ApiService Api
+
+<h3>Список записей из базы данных</h3>
+
+<button class="btn btn-outline-primary mb-3" @onclick="LoadRecords">Обновить данные</button>
+
+
+@if (isLoading)
+{
+    <div class="alert alert-info">Загрузка данных...</div>
+}
+else if (errorMessage != null)
+{
+    <div class="alert alert-danger">@errorMessage</div>
+}
+else if (!records.Any())
+{
+    <div class="alert alert-warning">Нет данных для отображения</div>
+}
+else
+{
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>Дата создания (UTC)</th>
+                <th>Сообщение</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var record in records)
+            {
+                <tr>
+                    <td>@record.Id</td>
+                    
+                    @* Форматируем дату для читаемого отображения *@
+                    <td>@record.DateCreated.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td>@record.Message</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<ApiService.Record> records = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+
+    /// Загружает данные при инициализации компонента
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRecords();
+    }
+
+    ///Загружает записи из API с обработкой ошибок
+    private async Task LoadRecords()
+    {
+        isLoading = true;
+        errorMessage = null;
+        StateHasChanged(); // Принудительное обновление UI
+
+        try
+        {
+            records = await Api.GetRecordsAsync();
+            Console.WriteLine($"Загружено записей: {records.Count}");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Ошибка загрузки данных: {ex.Message}";
+            records = new();
+        }
+
+        isLoading = false;
+        StateHasChanged();
+    }
+}

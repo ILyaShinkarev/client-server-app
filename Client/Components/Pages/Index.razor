@@ -1,0 +1,37 @@
+﻿@page "/"
+@inject ApiService Api
+
+<PageTitle>Главная</PageTitle>
+
+<h3>Статус подключения к серверу</h3>
+<p>Время сервера: @serverTime</p>
+<p>Статус: @status</p>
+
+@code {
+    private string serverTime = "Загрузка...";
+    private string status = "Проверка подключения...";
+
+    /// Проверяет подключение к серверу при загрузке
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckConnection();
+    }
+
+    /// Тестирует соединение с API и обновляет статус
+    private async Task CheckConnection()
+    {
+        try
+        {
+            var time = await Api.GetServerTimeAsync();
+            serverTime = time?.ToString("HH:mm:ss") ?? "Не доступно";
+            status = "Подключение установлено";
+        }
+        catch (Exception ex)
+        {
+            serverTime = "Ошибка";
+            status = $"Ошибка подключения: {ex.Message}";
+        }
+
+        StateHasChanged();
+    }
+}
