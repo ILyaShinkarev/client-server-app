@@ -1,62 +1,81 @@
-﻿using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
+﻿using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using DataAccess;
+using DataAccess.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Server.Api.Data;
-using Server.Api.Data.Models;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
-namespace Server.Api.Serviсes
+namespace Server.Api.Services
 {
-    ///Фоновый сервис для генерации тестовых записей
+    /// <summary>
+    /// Фоновый сервис, который периодически (раз в минуту) создаёт тестовые записи в базе данных.
+    /// </summary>
     public class RecordGeneratorService : BackgroundService
     {
-        private readonly ILogger _logger;
+        private readonly ILogger<RecordGeneratorService> _logger;
         private readonly IServiceScopeFactory _scopeFactory;
 
+        /// <summary>
+        /// Создаёт экземпляр фонового сервиса.
+        /// </summary>
         public RecordGeneratorService(IServiceScopeFactory scopeFactory, ILogger<RecordGeneratorService> logger)
         {
             _logger = logger;
             _scopeFactory = scopeFactory;
         }
 
+        /// <summary>
+        /// Каждую минуту создаёт новую запись в БД, пока не будет запрошена отмена.
+        /// </summary>
+        /// <param name="stoppingToken">Токен отмены, инициируемый при остановке хоста.</param>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            // Таймер для периодического выполнения каждую минуту
-            using PeriodicTimer timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
 
             while (await timer.WaitForNextTickAsync(stoppingToken))
             {
                 try
                 {
-                    // Создаем новую область для каждого выполнения
                     using var scope = _scopeFactory.CreateScope();
                     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                    // Создаем и сохраняем новую запись
-                    var rec = new Record() { DateCreated = DateTime.UtcNow, Message = GenerateRandom() };
+                    var rec = new Record
+                    {
+                        DateCreated = DateTime.UtcNow,
+                        Message = GenerateRandom()
+                    };
+
                     await db.Records.AddAsync(rec, stoppingToken);
                     await db.SaveChangesAsync(stoppingToken);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
-                    // Корректная обработка отмены операции
+                    // Корректное завершение работы при отмене.
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error while generating record");
+                    _logger.LogError(ex, "Ошибка при генерации тестовой записи.");
                 }
             }
         }
 
-        ///Генерирует случайную строку из цифр
-        private string GenerateRandom(int length = 10)
+        /// <summary>
+        /// Генерирует случайную цифровую строку указанной длины.
+        /// </summary>
+        /// <param name="length">Длина строки; по умолчанию 10.</param>
+        /// <returns>Строка, состоящая из случайных цифр.</returns>
+        private static string GenerateRandom(int length = 10)
         {
-            const string SYMBOL = "0123456789";
+            const string SYMBOLS = "0123456789";
             var rnd = new Random();
-            var message = new string(Enumerable.Repeat(SYMBOL, length)
+            return new string(Enumerable
+                .Repeat(SYMBOLS, length)
                 .Select(s => s[rnd.Next(s.Length)])
                 .ToArray());
-            return message;
         }
     }
 }

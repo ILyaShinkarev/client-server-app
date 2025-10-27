@@ -1,23 +1,49 @@
 ﻿@page "/"
+@rendermode InteractiveServer
+@inject IJSRuntime JS
 @inject ApiService Api
+@implements IDisposable
 
 <PageTitle>Главная</PageTitle>
 
-<h3>Статус подключения к серверу</h3>
+<h3>Проверка подключения к серверу</h3>
 <p>Время сервера: @serverTime</p>
 <p>Статус: @status</p>
+
+<hr />
+
+<h4>Тест клика по изображению</h4>
+
+<div class="mb-3">
+    <img @ref="imgRef"
+         src="/images/sample-1920x1080.jpg"
+         class="img-fluid border"
+         style="max-width:100%; height:auto; cursor:crosshair;"
+         @onclick="OnImageClick" />
+</div>
+
+@if (naturalW > 0)
+{
+    <p>Оригинальный размер: @naturalW x @naturalH</p>
+    <p>Отображаемый размер: @Math.Round(renderedW) x @Math.Round(renderedH)</p>
+}
+
+@if (lastNormX > 0 || lastNormY > 0)
+{
+    <div class="alert alert-info">
+        <b>Нормализованные координаты:</b> @lastNormX, @lastNormY
+    </div>
+}
 
 @code {
     private string serverTime = "Загрузка...";
     private string status = "Проверка подключения...";
 
-    /// Проверяет подключение к серверу при загрузке
     protected override async Task OnInitializedAsync()
     {
         await CheckConnection();
     }
 
-    /// Тестирует соединение с API и обновляет статус
     private async Task CheckConnection()
     {
         try
@@ -31,7 +57,53 @@
             serverTime = "Ошибка";
             status = $"Ошибка подключения: {ex.Message}";
         }
+    }
+
+    // JS Interop для кликов по изображению
+    private ElementReference imgRef;
+    private IJSObjectReference? _jsModule;
+
+    private int naturalW, naturalH;          // оригинальные пиксели изображения
+    private double renderedW, renderedH;     // фактический рендер в CSS-пикселях
+
+    private double lastNormX, lastNormY;     // нормализованные координаты в оригинальных пикселях
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Импорт ES-модуля из wwwroot/js/imageClick.js
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/imageClick.js");
+            await ReadImageMetricsAsync();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ReadImageMetricsAsync()
+    {
+        if (_jsModule is null) return;
+
+        var m = await _jsModule.InvokeAsync<ImageMetrics>("getImageMetrics", imgRef);
+        naturalW = m.naturalWidth;
+        naturalH = m.naturalHeight;
+        renderedW = m.renderedWidth;
+        renderedH = m.renderedHeight;
+    }
+
+    private async Task OnImageClick(MouseEventArgs e)
+    {
+        await ReadImageMetricsAsync();
+
+        if (renderedW == 0 || renderedH == 0) return;
+
+        // Нормализация offsetX/offsetY (CSS-пиксели) к натуральным пикселям изображения
+        lastNormX = Math.Round(e.OffsetX * naturalW / renderedW);
+        lastNormY = Math.Round(e.OffsetY * naturalH / renderedH);
 
         StateHasChanged();
     }
+
+    public void Dispose() => _jsModule?.DisposeAsync();
+
+    private record ImageMetrics(int naturalWidth, int naturalHeight, double renderedWidth, double renderedHeight);
 }

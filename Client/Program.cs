@@ -1,33 +1,34 @@
 using Client.Components;
 using Client.Services;
+using Yarp.ReverseProxy;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Регистрация HTTP-клиента для API
+builder.Services.AddReverseProxy()
+    .LoadFromConfig(builder.Configuration.GetSection("ReverseProxy"));
+
 builder.Services.AddHttpClient("api", c =>
 {
-    c.BaseAddress = new Uri("https://localhost:8080");  // Адрес серверного API
+    c.BaseAddress = new Uri("http://localhost:5275");
     c.DefaultRequestHeaders.Add("Accept", "application/json");
 });
 
+// DI сервисов
 builder.Services.AddScoped<ApiService>();
+
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
 var app = builder.Build();
 
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
-}
-
-app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAntiforgery();
 
+// Проксируем /api/** на backend согласно конфигу YARP
+app.MapReverseProxy();
 
+// Маршруты Razor-компонентов
 app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
+   .AddInteractiveServerRenderMode();
 
 app.Run();
