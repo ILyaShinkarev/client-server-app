@@ -48,6 +48,7 @@ else if (records.Count == 0)
 else
 {
     <div class="alert alert-success">Данные загружены!</div>
+    <p><strong>Все отображаемое время в таблице — это UTC</strong></p>
     <table class="table table-striped table-hover">
         <thead>
             <tr>
@@ -75,19 +76,18 @@ else
     private string? errorMessage;
     private DateTime? currentTime;
 
-    // Значения из <input type="datetime-local"> в локальном времени пользователя
     private DateTime? fromLocal;
     private DateTime? toLocal;
 
     // Минимальное время показа спиннера (мс)
     private const int MinSpinnerMs = 800;
-    private Timer? _timer;
+    private PeriodicTimer? _timer;
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await LoadRecords();       // первичная загрузка
-        await GetCurrentTime();    // запрос времени
-        StartTimeUpdater();        // обновление времени раз в секунду
+        _ = LoadRecords();        // Запуск в фоне
+        _ = GetCurrentTime();     // Запуск в фоне
+        StartTimeUpdater();       // Запуск таймера
     }
 
     private async Task ApplyFilter() => await LoadRecords();
@@ -106,7 +106,7 @@ else
         isLoading = true;
         errorMessage = null;
         records.Clear();
-        await InvokeAsync(StateHasChanged); // показать спиннер сразу
+        await InvokeAsync(StateHasChanged); // Показать спиннер сразу
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
@@ -136,9 +136,11 @@ else
         }
         finally
         {
+            // Минимальное время для отображения спиннера
             var remaining = MinSpinnerMs - (int)sw.ElapsedMilliseconds;
             if (remaining > 0) await Task.Delay(remaining);
 
+            // Обновить состояние после завершения загрузки
             isLoading = false;
             await InvokeAsync(StateHasChanged);
         }
@@ -157,10 +159,13 @@ else
         }
     }
 
-    private void StartTimeUpdater()
+    private async void StartTimeUpdater()
     {
-        _timer = new Timer(async _ => await GetCurrentTime(),
-            null, TimeSpan.Zero, TimeSpan.FromSeconds(1));
+        _timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        while (await _timer.WaitForNextTickAsync())
+        {
+            await GetCurrentTime();
+        }
     }
 
     public void Dispose() => _timer?.Dispose();
